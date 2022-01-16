@@ -34,7 +34,7 @@ public:
       std::stringstream str_value;
       bool change_made = false;
       m_menu->Execute(command.c_str(), m_menu, change_made, str_value, json);
-      if (false && change_made)
+      if (true && change_made)
       {
          changeMade();
       }
