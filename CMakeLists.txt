@@ -2,6 +2,7 @@ idf_component_register(SRCS
                     "OneWireNg_BitBang.cpp"
                     "I2CPort.cpp"
                     "MAX7320.cpp"
+                    "MPR121.cpp"
                     "OneWireNg.cpp"
                     #                    "IOPort.cpp"
                     "TempSensors.cpp"

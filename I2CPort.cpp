@@ -18,7 +18,7 @@ bool              I2CPort::m_outputEnabled = true;
 StaticSemaphore_t I2CPort::m_ioMutexBuf;
 SemaphoreHandle_t I2CPort::m_ioMutex;
 
-uint8_t I2CPort::m_outputAddresses[NUM_PORTS] =
+uint8_t I2CPort::m_mode[NUM_PORTS] =
 {
    0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
    0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
@@ -53,38 +53,35 @@ uint8_t I2CPort::m_pins[NUM_PORTS] =
    0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
    0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0
 };
+I2CPort* I2CPort::m_objects[NUM_PORTS] =
+{
+   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+};
 
 I2CPort::I2CPort(IOMode_t mode, uint8_t addr, uint8_t mask) :
    m_addr(addr),
    m_mask(mask)
 {
-   if (mode == OUTPUT)
+   if (addr > 0)
    {
-      m_ddr[m_addr] |= mask;
-      int x;
-      for (x = 0; x < NUM_PORTS; x++)
+      m_mode[m_addr] = mode;
+      m_objects[m_addr] = this;
+      ESP_LOGI(TAG, "m_mode[0x%02x] = 0x%02x", (int)m_addr, (int)m_mode[m_addr]);
+      if (mode == OUTPUT)
       {
-         if (m_outputAddresses[x] == addr)
-         {
-            break;
-         }
+         m_ddr[m_addr] |= mask;
       }
-      if (x == NUM_PORTS)
+      else if (mode == INPUT)
       {
-         for (x = 0; x < NUM_PORTS; x++)
-         {
-            if (m_outputAddresses[x] == 0)
-            {
-               ESP_LOGI(TAG, "Added addr 0x%02x to position: %d", (int)addr, (int)x);
-               m_outputAddresses[x] = addr;
-               break;
-            }
-         }
+         m_ddr[m_addr] &= ~mask;
       }
-   }
-   else
-   {
-      m_ddr[m_addr] &= ~mask;
    }
 }
 
@@ -103,12 +100,20 @@ void* I2CPort::exec(void*)
    while (true)
    {
       int cnt = 0;
-      for (int x = 0; m_outputEnabled && m_defaultPort != NULL && x < NUM_PORTS; x++)
+      for (int addr = 0; addr < NUM_PORTS; addr++)
       {
-         if (m_outputAddresses[x] != 0)
+         if (m_outputEnabled && m_defaultPort != NULL )
          {
-//            ESP_LOGI(TAG, "writing port: 0x%02x = 0x%02x", (int)m_outputAddresses[x], (int)m_pins[m_outputAddresses[x]]);
-            m_defaultPort->writePortData(m_outputAddresses[x], m_pins[m_outputAddresses[x]]);
+            if (m_mode[addr] == OUTPUT)
+            {
+//               ESP_LOGI(TAG, "writing port: 0x%02x = 0x%02x", (int)addr, (int)m_pins[addr]);
+               m_objects[addr]->writePortData(addr, m_pins[addr]);
+            }
+            else if (true && m_mode[addr] != UNDEF)
+            {
+//               ESP_LOGI(TAG, "processing port: 0x%02x = 0x%02x", (int)addr, (int)m_pins[addr]);
+               m_objects[addr]->processPort(addr, m_ddr[addr]);
+            }
          }
          std::this_thread::sleep_for(std::chrono::microseconds(INTER_IO_US));
       }

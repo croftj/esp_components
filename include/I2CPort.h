@@ -15,8 +15,10 @@ class I2CPort
 public:
    typedef enum
    {
-      INPUT = 0,
-      OUTPUT
+      UNDEF = 0,
+      INPUT,
+      OUTPUT,
+      OTHER
    } IOMode_t;
 
    I2CPort(IOMode_t mode, uint8_t addr, uint8_t mask);
@@ -44,9 +46,10 @@ public:
          ESP_LOGI("I2CPort", "Port configured");
          for (int x = 0; x < NUM_PORTS; x++)
          {
-            if (m_outputAddresses[x] > 0)
+            if (m_mode[x] > 0)
             {
-               writePortDDR(m_outputAddresses[x], m_ddr[x]);
+               writePortDDR(x, m_ddr[x]);
+               initializePort(x, m_ddr[x]);
             }
          }
       }
@@ -76,11 +79,6 @@ public:
 //      writePortData(m_addr, m_pins[m_addr]);
    }
 
-   uint8_t read()
-   {
-      return(readPortData(m_addr) & m_mask);
-   }
-
    void setPin(uint8_t pin)
    {
       m_pins[m_addr] |= _BV(pin);
@@ -105,6 +103,7 @@ public:
 //      writePortData(m_addr, m_pins[m_addr]);
    }
 
+#ifdef READ_PORT_DATA
    bool readPin(uint8_t pin)
    {
       return(readPortData(m_addr) & _BV(pin));
@@ -114,6 +113,7 @@ public:
    {
       return(readPortData(m_addr));
    }
+#endif
 
    void setPortDDR(uint8_t ddr)
    {
@@ -150,9 +150,10 @@ public:
    void static *exec(void*);
 
 protected:
-   virtual uint8_t  readPortData(uint8_t m_addr) = 0;
    virtual void     writePortData(uint8_t m_addr, uint8_t data) = 0;
    virtual void     writePortDDR(uint8_t m_addr, uint8_t ddr) = 0;
+   virtual void     processPort(uint8_t m_addr, uint8_t ddr) = 0;
+   virtual void     initializePort(uint8_t m_addr, uint8_t ddr) = 0;
 
    uint8_t  m_addr;
    uint8_t  m_mask;               
@@ -169,9 +170,10 @@ private:
       NUM_PORTS = 256
    };
    
-   static uint8_t             m_outputAddresses[NUM_PORTS];
+   static uint8_t             m_mode[NUM_PORTS];
    static uint8_t             m_ddr[NUM_PORTS];
    static uint8_t             m_pins[NUM_PORTS];
+   static I2CPort*            m_objects[NUM_PORTS];
 };
 
 #endif

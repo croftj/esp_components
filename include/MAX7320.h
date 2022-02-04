@@ -10,9 +10,10 @@ public:
       I2CPort(mode, addr, mask)
    {}
 
-  virtual uint8_t readPortData(uint8_t addr);
+  virtual void    processPort(uint8_t addr, uint8_t ddr);
   virtual void    writePortData(uint8_t addr, uint8_t data);
   virtual void    writePortDDR(uint8_t addr, uint8_t ddr);
+  virtual void    initializePort(uint8_t addr, uint8_t ddr);
 };
 
 #endif
