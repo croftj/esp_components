@@ -109,6 +109,20 @@ MenuEntry::MenuEntry(const char *name, const char *key, MenuType_t type, bool (*
 
 void MenuEntry::AddChildMenu(MenuEntry *child, const char *key)
 {
+   MenuType_t type = child->m_type;
+   if (type == MainMenu || type == SubMenu)
+      child->m_class = MENU;
+   else if (type == Hidden)
+      child->m_class = HIDDEN;
+   else if (type == String || type == YesNo || type == TimeMin)
+      child->m_class = STRING;
+   else if (type == YesNo)
+      child->m_class = BOOL;
+   else if (type == Float || type == Int || type == UInt)
+      child->m_class = NUMBER;
+   else
+      child->m_class = SPECIAL;
+
    child->m_nextSibling = m_1stChild;
    if (! m_keyMap.insert(make_pair(key, child)).second)
    {
@@ -288,6 +302,22 @@ bool MenuEntry::PrintEntry()
    return(rv);
 }
 
+void MenuEntry::printEntries(std::ostream& d_out)
+{
+   d_out << "{\"message_type\" : \"discovery\", \"keys\" : \"";
+   KeyList_t kl = keys();
+   for (auto it = kl.begin(); it != kl.end(); ++it)
+   {
+      MenuEntry* entry = findEntry(*it);
+      MenuClass_t e_class = (entry != NULL) ? entry->entryClass() : HIDDEN;
+      if (e_class == STRING || e_class == NUMBER || e_class == BOOL)
+      {
+         d_out << entry->m_key << ",";
+      }
+   }
+   d_out << "\"}";
+}
+
 string MenuEntry::valueToString()
 {
    stringstream str_entry;
@@ -337,9 +367,14 @@ bool MenuEntry::PrintValue(std::ostream& d_out)
          break;
 
       case Float:
-      case Hidden:
       case Int:
       case UInt:
+         if (m_value->toString().length() == 0)
+            d_out << "null";
+         else
+            d_out << m_value->toString();
+         break;
+      case Hidden:
       case String:
       case YesNo:
          d_out << m_value->toString();
@@ -364,32 +399,44 @@ bool MenuEntry::PrintValue(std::ostream& d_out)
    return(true);
 }
 
+
+const char *MenuEntry::parseEntryName(const char* buf, char* name_buf, unsigned int len)
+{
+   char *cp = name_buf;
+   char ch = *buf;
+   ESP_LOGI(TAG, "Enter");
+   while (ch >= '\x20' && ch != '?' && ch != '.' && ch != '=' ) 
+   {
+      if ( strlen(name_buf) < len - 1 ) 
+      {
+         ch = *(buf);
+         if ( ch >= '\x20' && ch != '?' && ch != '.' && ch != '=' && ch  ) 
+         {
+            *(cp++) = tolower(ch);
+            buf++;
+         }
+      }
+   }
+   return(buf);
+}
+
 MenuEntry *MenuEntry::Execute(const char *buf, MenuEntry *first_menu, bool &change_made, ostream& d_out, bool json)
 {
+   change_made = false;
    MenuEntry *rv = first_menu;
-
-   cout << "MenuEntry::Execute(): Enter!" << endl;
+   char ch;
+   ESP_LOGI(TAG, "buf = |%s|, menu type = %d", buf, m_type);
    memset(entry, '\x00', sizeof(entry));
    if ( strlen(buf) > 0 ) 
    {
       if ( m_type == MainMenu ||
             m_type == SubMenu ) 
       {
-         char ch = 'a';
-         char *cp = entry;
-         while (ch >= '\x20' && ch != '?' && ch != '.' && ch != '=' ) 
-         {
-            if ( strlen(entry) < sizeof(entry) - 1 ) 
-            {
-               ch = *(buf++);
-               if ( ch >= '\x20' && ch != '?' && ch != '.' && ch != '=' && ch  ) 
-               {
-                  *(cp++) = tolower(ch);
-               }
-            }
-         }
+         buf = parseEntryName(buf, entry, strlen(entry));
+         ESP_LOGI(TAG, "entry = %s, buf = %s", entry, buf);
          if (dbg1) cout << (const char*)"entry = '" << entry;
          if (dbg1) cout << (const char*)"'" << endl;
+         ch = *(buf++);
          if ( strlen(entry) > 0 ) 
          {
             MenuEntry *it = FindChild(entry);
@@ -425,17 +472,17 @@ MenuEntry *MenuEntry::Execute(const char *buf, MenuEntry *first_menu, bool &chan
                      {
                         d_out << "{\"message_type\" : \"config\", ";
                         d_out << "\"" << it->pathToString() << "\" : ";
-                        if (m_type == String)
+                        if (it->m_type == String)
                         {
-                           d_out << "\"" << it->m_value->toString() << "\"}";
+                           d_out << "\"" << it->valueToString() << "\"}";
                         }
-                        else if (m_type == TimeMin)
+                        else if (it->m_type == TimeMin)
                         {
-                           int val = m_value->toInt();
+                           int val = it->m_value->toInt();
                            int hr = val / 60;
                            int min = val % 60;
                            sprintf(tbuf, "%02d:%02d", hr, min);
-   //                        ESP_LOGI(TAG, "Showing time %02d:%02d", hr, min);
+                           ESP_LOGI(TAG, "Showing time %02d:%02d", hr, min);
                            d_out << tbuf;
                         }
                         else
@@ -535,7 +582,15 @@ MenuEntry *MenuEntry::Execute(const char *buf, MenuEntry *first_menu, bool &chan
                   }
                   if (err)
                   {
-                     cout << (const char*)"\r\nAck!!!\r\n";
+                     if (json)
+                     {
+                        d_out << "{\"message_type\" : \"error\", ";
+                        d_out << "\"invalid_value\" : \"" << buf << "\"";
+                     }
+                     else
+                     {
+                        cout << (const char*)"\r\nAck!!!\r\n";
+                     }
                      return(this);
                   }
                   change_made = true;
@@ -555,11 +610,27 @@ MenuEntry *MenuEntry::Execute(const char *buf, MenuEntry *first_menu, bool &chan
                cout << (const char*)", min = " << (int)min << endl;
                if (hour > 23 || hour < 0)
                {
-                  cout << (const char*)"Invalid hour entered, should be 0 - 23\r\n";
+                  if (json)
+                  {
+                     d_out << "{\"message_type\" : \"error\", ";
+                     d_out << "\"invalid_hour\" : \"" << buf << "\"";
+                  }
+                  else
+                  {
+                     cout << (const char*)"Invalid hour entered, should be 0 - 23\r\n";
+                  }
                }
                else if (min > 59 || min < 0)
                {
-                  cout << (const char*)"Invalid minute entered, should be 0 - 59\r\n";
+                  if (json)
+                  {
+                     d_out << "{\"message_type\" : \"error\", ";
+                     d_out << "\"invalid_minute\" : \"" << buf << "\"";
+                  }
+                  else
+                  {
+                     cout << (const char*)"Invalid minute entered, should be 0 - 59\r\n";
+                  }
                }
                else 
                {
@@ -586,7 +657,15 @@ MenuEntry *MenuEntry::Execute(const char *buf, MenuEntry *first_menu, bool &chan
                }
                else 
                {
-                  cout << (const char*)"Error- Unexpected value, expecting  'y' or 'n', 't' or 'f'";
+                  if (json)
+                  {
+                     d_out << "{\"message_type\" : \"error\", ";
+                     d_out << "\"invalid_bool\" : \"" << buf << "\"";
+                  }
+                  else
+                  {
+                     cout << (const char*)"Error- Unexpected value, expecting  'y' or 'n', 't' or 'f'";
+                  }
                }
                break;
             case Hidden:
@@ -595,7 +674,7 @@ MenuEntry *MenuEntry::Execute(const char *buf, MenuEntry *first_menu, bool &chan
             default:
                cout << (const char*)"Invalid nenu type encountered!!!";
          }
-         if (false && m_type != Hidden)
+         if (true && m_type != Hidden)
          {
             cout << endl;
             PrintPath(d_out);

@@ -29,6 +29,45 @@ public:
       m_currentMenu = menu;
    }
 
+   std::string procKeyRequest(std::string request, bool json)
+   {
+      std::stringstream str_value;
+      bool change_made;
+      char entry[80];
+      const char* req_ptr = request.c_str();
+
+      memset(entry, '\x00', sizeof(entry));
+      req_ptr = (const char*)m_menu->parseEntryName(req_ptr, entry, sizeof(entry));
+      ESP_LOGI(TAG, "req_ptr = %s, entry = %s", req_ptr, entry);
+      if (*req_ptr != '.')
+      {
+         MenuEntry *key_entry = m_menu->findEntry(entry);
+         if (key_entry != NULL)
+         {
+            if (key_entry->Parent() != NULL)
+            {
+               key_entry = key_entry->Parent();
+            }
+            ESP_LOGI(TAG, "found entry! key = %s", key_entry->key().c_str());
+            key_entry->Execute(request.c_str(), key_entry, change_made, str_value, json);
+            if (true && change_made)
+            {
+               changeMade();
+            }
+         }
+         else
+         {
+            str_value << "{\"message_type\" : \"error\", ";
+            str_value << "\"invalid_key\" : \"" << entry << "\"";
+         }
+      }
+      else
+      {
+         str_value << execCommand(request, json);
+      }
+      return(str_value.str());
+   }
+
    std::string execCommand(std::string command, bool json)
    {
       std::stringstream str_value;

@@ -15,6 +15,15 @@ class MenuEntry
 public:
    typedef std::map<std::string, MenuEntry*> KeyMap_t;
    typedef std::vector<std::string> KeyList_t;
+   typedef enum
+   {
+      STRING,
+      NUMBER,
+      BOOL,
+      MENU,
+      HIDDEN,
+      SPECIAL
+   } MenuClass_t;
 
    typedef enum
    {
@@ -43,9 +52,11 @@ public:
    static Variant entryValue(std::string key);
    static MenuEntry::KeyList_t keys();
    static MenuEntry *findEntry(std::string key);
+   static void printEntries(std::ostream& d_out);
    std::string toString();
    std::string valueToString();
    std::string pathToString();
+   const char *parseEntryName(const char* buf, char* name_buf, unsigned int len);
    MenuEntry *Execute(const char *buf, MenuEntry *first_menu, bool &change_made, std::ostream& d_out = std::cout, bool json = false);
    void setValue(std::string key, Variant value);
 
@@ -81,6 +92,10 @@ public:
       return(m_type);
    }
 
+   MenuClass_t entryClass()
+   {
+      return(m_class);
+   }
 
 private:
    void              AddChildMenu(MenuEntry *child, const char *key);
@@ -89,6 +104,7 @@ private:
    const char*       m_name;
    std::string       m_key;
    MenuType_t        m_type;
+   MenuClass_t       m_class;
    Variant*          m_value;
    bool              (*m_action)(std::ostream& d_out);
    bool              (*m_input)(const std::string);
