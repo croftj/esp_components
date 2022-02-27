@@ -7,6 +7,7 @@
 #include <string>
 #include <iostream>
 #include <vector>
+
 #include "variant.h"
 #include "validator.h"
 
@@ -40,12 +41,20 @@ public:
       SubMenu
    } MenuType_t;
 
+   typedef enum
+   {
+      NoOptions      = 0,
+      Invisible      = 1 << 0,
+      NoPermanence   = 1 << 2
+   } Options_t;
+
    MenuEntry(const char *name, const char *key, MenuType_t type, MenuEntry *parent = NULL);
-   MenuEntry(const char *name, const char *key, MenuType_t type, Variant *value, MenuEntry *parent, Validator* validator = NULL);
+   MenuEntry(const char *name, const char *key, MenuType_t type, Variant *value, MenuEntry *parent, Validator* validator = NULL, int options = NoOptions);
    MenuEntry(const char *name, const char *key, MenuType_t type, bool (*input)(const std::string), void (*output)(std::ostream& d_out), MenuEntry *parent);
    MenuEntry(const char *name, const char *key, MenuType_t type, bool (*action)(std::ostream& d_out), MenuEntry *parent);
 
    void PrintChildren();
+   bool PrintJsonEntry(std::ostream& d_out);
    void PrintPath(std::ostream& d_out = std::cout);
    bool PrintEntry();
    bool PrintValue(std::ostream& d_out = std::cout);
@@ -97,6 +106,11 @@ public:
       return(m_class);
    }
 
+   int options()
+   {
+      return(m_options);
+   }
+
 private:
    void              AddChildMenu(MenuEntry *child, const char *key);
    MenuEntry*        FindChild(const char *entry);
@@ -110,6 +124,7 @@ private:
    bool              (*m_input)(const std::string);
    void              (*m_output)(std::ostream& d_out);
    Validator*        m_validator;
+   Options_t         m_options;
    MenuEntry*        m_parent;
    MenuEntry*        m_1stChild;
    MenuEntry*        m_nextSibling;

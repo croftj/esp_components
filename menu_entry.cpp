@@ -32,6 +32,7 @@ MenuEntry::MenuEntry(const char *name, const char *key, MenuType_t type, MenuEnt
     m_input(NULL),
     m_output(NULL),
     m_validator(NULL),
+    m_options(NoOptions),
     m_parent(parent),
     m_1stChild(NULL),
     m_nextSibling(NULL)
@@ -44,7 +45,7 @@ MenuEntry::MenuEntry(const char *name, const char *key, MenuType_t type, MenuEnt
    }
 }
 
-MenuEntry::MenuEntry(const char *name, const char *key, MenuType_t type, Variant* value, MenuEntry *parent, Validator* validator) :
+MenuEntry::MenuEntry(const char *name, const char *key, MenuType_t type, Variant* value, MenuEntry *parent, Validator* validator, int options) :
     m_name(name),
     m_key(key),
     m_type(type),
@@ -53,6 +54,7 @@ MenuEntry::MenuEntry(const char *name, const char *key, MenuType_t type, Variant
     m_input(NULL),
     m_output(NULL),
     m_validator(validator),
+    m_options(static_cast<Options_t>(options)),
     m_parent(parent),
     m_1stChild(NULL),
     m_nextSibling(NULL)
@@ -73,6 +75,7 @@ MenuEntry::MenuEntry(const char *name, const char *key, MenuType_t type, bool (*
     m_input(input),
     m_output(output),
     m_validator(NULL),
+    m_options(NoOptions),
     m_parent(parent),
     m_1stChild(NULL),
     m_nextSibling(NULL)
@@ -95,6 +98,7 @@ MenuEntry::MenuEntry(const char *name, const char *key, MenuType_t type, bool (*
     m_input(NULL),
     m_output(NULL),
     m_validator(NULL),
+    m_options(NoOptions),
     m_parent(parent),
     m_1stChild(NULL),
     m_nextSibling(NULL)
@@ -112,8 +116,6 @@ void MenuEntry::AddChildMenu(MenuEntry *child, const char *key)
    MenuType_t type = child->m_type;
    if (type == MainMenu || type == SubMenu)
       child->m_class = MENU;
-   else if (type == Hidden)
-      child->m_class = HIDDEN;
    else if (type == String || type == YesNo || type == TimeMin)
       child->m_class = STRING;
    else if (type == YesNo)
@@ -247,14 +249,17 @@ bool MenuEntry::PrintEntry()
 //         cout << (const char*)" 0x";
 //         cout << itoa((long)p, ibuf, 16);
 //         cout << (const char*)", ";
-         memset(tbuf, '\x00', sizeof(tbuf));
-         strncpy(tbuf, p->m_name, sizeof(tbuf) - 1);
-         int len = strlen(p->m_name) + p->m_key.length() + 2;
-         if (dbg) cout << "entry: " << tbuf << ", len " << (int)len << ", entry_len = " << (int)entry_len << endl;
-         if ( len > entry_len ) 
+         if ( ! (p->m_options & Hidden))
          {
-            cout << "Found new entry_len" << endl;
-            entry_len = len;
+            memset(tbuf, '\x00', sizeof(tbuf));
+            strncpy(tbuf, p->m_name, sizeof(tbuf) - 1);
+            int len = strlen(p->m_name) + p->m_key.length() + 2;
+            if (dbg) cout << "entry: " << tbuf << ", len " << (int)len << ", entry_len = " << (int)entry_len << endl;
+            if ( len > entry_len ) 
+            {
+               cout << "Found new entry_len" << endl;
+               entry_len = len;
+            }
          }
       }
       cout << (const char*)"\r\n";
@@ -263,24 +268,21 @@ bool MenuEntry::PrintEntry()
       char index[2] = "`";
       for (; rv != false && p != NULL; p = p->m_nextSibling) 
       {
-         if (p->m_type != Hidden)
+         if ( ! (p->m_options & Invisible))
          {
             (*index)++;
             cout << index << ") " << p->m_key << ": " << p->m_name;
             
             if ( p->m_type != Action && p->m_type != MainMenu && p->m_type != SubMenu ) 
             {
-               if (p->m_type != Hidden) 
+               int targ_len = entry_len + 4 - (strlen(p->m_name) + p->m_key.length() + 2);
+               for (int x = 0; x < targ_len; x++) 
                {
-                  int targ_len = entry_len + 4 - (strlen(p->m_name) + p->m_key.length() + 2);
-                  for (int x = 0; x < targ_len; x++) 
-                  {
-                     cout << (const char*)".";
-                  }
-                  cout << (const char*)" [";
-                  p->PrintValue();
-                  cout << (const char*)"]\r\n";
+                  cout << (const char*)".";
                }
+               cout << (const char*)" [";
+               p->PrintValue();
+               cout << (const char*)"]\r\n";
             }
             else
             {
@@ -291,12 +293,15 @@ bool MenuEntry::PrintEntry()
    }
    else
    {
-      cout << m_name;
-      if ( m_type != Action && m_type != MainMenu && m_type != SubMenu)
+      if ( ! (m_options & Invisible))
       {
-         cout << (const char*)" [";
-         PrintValue();
-         cout << (const char*)"]";
+         cout << m_name;
+         if (m_type != Action)
+         {
+            cout << (const char*)" [";
+            PrintValue();
+            cout << (const char*)"]";
+         }
       }
    }
    return(rv);
@@ -309,10 +314,13 @@ void MenuEntry::printEntries(std::ostream& d_out)
    for (auto it = kl.begin(); it != kl.end(); ++it)
    {
       MenuEntry* entry = findEntry(*it);
-      MenuClass_t e_class = (entry != NULL) ? entry->entryClass() : HIDDEN;
-      if (e_class == STRING || e_class == NUMBER || e_class == BOOL)
+      if ( ! (entry->m_options & Invisible))
       {
-         d_out << entry->m_key << ",";
+         MenuClass_t e_class = entry->m_class;
+         if (e_class == STRING || e_class == NUMBER || e_class == BOOL)
+         {
+            d_out << entry->m_key << ",";
+         }
       }
    }
    d_out << "\"}";
@@ -352,6 +360,65 @@ string MenuEntry::valueToString()
    }
    return(str_entry.str());
 }
+
+bool MenuEntry::PrintJsonEntry(std::ostream& d_out)
+{
+   if ( ! (m_options & Hidden))
+   {
+      d_out << "...{ \"" << m_key << "\" :";
+      switch (m_type) 
+      {
+         case CustomIO:
+            d_out << "\"";
+            if ( m_output != NULL ) 
+            {
+               (*m_output)(d_out);
+            }
+            d_out << "\"";
+            break;
+
+         case Float:
+         case Int:
+         case UInt:
+            if (m_value->toString().length() == 0)
+               d_out << "null";
+            else
+               d_out << m_value->toString();
+            break;
+
+         case Hidden:
+         case String:
+            d_out << "\"";
+            d_out << m_value->toString();
+            d_out << "\"";
+            break;
+
+         case YesNo:
+            d_out << ((m_value->toInt() == 0) ? "false" : "true");
+            break;
+
+         case TimeMin:
+            {
+               int val = m_value->toInt();
+               int hr = val / 60;
+               int min = val % 60;
+               sprintf(tbuf, "%02d:%02d", hr, min);
+   //            ESP_LOGI(TAG, "Showing time %02d:%02d", hr, min);
+               d_out << "\"";
+               d_out << tbuf;
+               d_out << "\"";
+            }
+
+         case Action:
+         case MainMenu:
+         case SubMenu:
+            break;
+      }
+      d_out << "}";
+   }
+   return(true);
+}
+
 
 bool MenuEntry::PrintValue(std::ostream& d_out)
 {
@@ -457,38 +524,40 @@ MenuEntry *MenuEntry::Execute(const char *buf, MenuEntry *first_menu, bool &chan
                }
                else if ( ch == '?')
                {
-                  if (it->m_type != Hidden)
+                  if (! json)
                   {
-                     if (! json)
+                     d_out << endl;
+                     d_out << "=";
+                     d_out << it->valueToString();
+                     d_out << " @ ";
+                     d_out << it->pathToString();
+                     d_out << endl;
+                  }
+                  else
+                  {
+                     d_out << "{\"message_type\" : \"config\", ";
+                     d_out << "\"" << it->pathToString() << "\" : ";
+                     if (it->m_type == String)
                      {
-                        d_out << endl;
-                        d_out << "=";
-                        d_out << it->valueToString();
-                        d_out << " @ ";
-                        d_out << it->pathToString();
-                        d_out << endl;
+                        d_out << "\"" << it->valueToString() << "\"}";
+                     }
+                     else if (it->m_type == TimeMin)
+                     {
+                        int val = it->m_value->toInt();
+                        int hr = val / 60;
+                        int min = val % 60;
+                        sprintf(tbuf, "%02d:%02d", hr, min);
+                        ESP_LOGI(TAG, "Showing time %02d:%02d", hr, min);
+                        d_out << tbuf;
                      }
                      else
                      {
-                        d_out << "{\"message_type\" : \"config\", ";
-                        d_out << "\"" << it->pathToString() << "\" : ";
-                        if (it->m_type == String)
+                        std::string sval = it->m_value->toString();
+                        if (sval.length() == 0)
                         {
-                           d_out << "\"" << it->valueToString() << "\"}";
+                           sval = "null";
                         }
-                        else if (it->m_type == TimeMin)
-                        {
-                           int val = it->m_value->toInt();
-                           int hr = val / 60;
-                           int min = val % 60;
-                           sprintf(tbuf, "%02d:%02d", hr, min);
-                           ESP_LOGI(TAG, "Showing time %02d:%02d", hr, min);
-                           d_out << tbuf;
-                        }
-                        else
-                        {
-                           d_out << it->m_value->toString() << "}";
-                        }
+                        d_out << sval  << "}";
                      }
                   }
                   change_made = false;
@@ -511,9 +580,9 @@ MenuEntry *MenuEntry::Execute(const char *buf, MenuEntry *first_menu, bool &chan
                         cout << (const char*)"Invalid Action defined\r\n";
                      }
                   }
-                  else if (it->m_type != Hidden)
+                  else // if (it->m_type != Hidden)
                   {
-                     if (dbg) cout << (const char*)"Setting rv to entry: " << strcpy(tbuf, it->m_name) << endl;
+                     ESP_LOGI(TAG, "Setting rv to entry: %s", it->m_name);
                      rv = it;
                   }
                }
@@ -537,6 +606,7 @@ MenuEntry *MenuEntry::Execute(const char *buf, MenuEntry *first_menu, bool &chan
 //         if (dbg) cout << __PRETTY_FUNCTION__ << "single entry, buf = " << buf;
 //         if (dbg) cout << (const char*)"\r\n";
 //         if (dbg) cout << __PRETTY_FUNCTION__ << "m_type = '" << (int)m_type << endl;
+         Variant val(buf);
          switch (m_type) 
          {
             case CustomIO:
@@ -555,7 +625,6 @@ MenuEntry *MenuEntry::Execute(const char *buf, MenuEntry *first_menu, bool &chan
             case UInt:
             case String:
                {
-                  Variant val(buf);
                   bool err = false;
                   if (m_type == Float)
                   {
@@ -593,7 +662,10 @@ MenuEntry *MenuEntry::Execute(const char *buf, MenuEntry *first_menu, bool &chan
                      }
                      return(this);
                   }
-                  change_made = true;
+                  if ( ! (m_options & NoPermanence))
+                  {
+                     change_made = true;
+                  }
                   *m_value = val;
                }
                break;
@@ -636,7 +708,10 @@ MenuEntry *MenuEntry::Execute(const char *buf, MenuEntry *first_menu, bool &chan
                {
                   int time_min = hour * 60 + min;
                   m_value->setValue(Variant(time_min));
-                  change_made = true;
+                  if (! (m_options & NoPermanence))
+                  {
+                     change_made = true;
+                  }
                }
 //               if (dbg) cout << __PRETTY_FUNCTION__ << "TimeInt = " << (uint16_t)*((uint16_t*)m_value);
 //               if (dbg) cout << (const char*)"'\r\n";
@@ -648,12 +723,18 @@ MenuEntry *MenuEntry::Execute(const char *buf, MenuEntry *first_menu, bool &chan
                if ( tolower(*buf) == 'y' || tolower(*buf) == 't' ) 
                {
                   m_value->setValue(Variant("true"));
-                  change_made = true;
+                  if ( ! (m_options & NoPermanence))
+                  {
+                     change_made = true;
+                  }
                }
                else if ( tolower(*buf)== 'n' || tolower(*buf) == 'f' ) 
                {
                   m_value->setValue(Variant("false"));
-                  change_made = true;
+                  if ( ! (m_options & NoPermanence))
+                  {
+                     change_made = true;
+                  }
                }
                else 
                {
@@ -668,19 +749,29 @@ MenuEntry *MenuEntry::Execute(const char *buf, MenuEntry *first_menu, bool &chan
                   }
                }
                break;
+
+            // Change the hidden value, but do not save the eesquare values
             case Hidden:
+               *m_value = val;
                break;
 
             default:
                cout << (const char*)"Invalid nenu type encountered!!!";
          }
-         if (true && m_type != Hidden)
+         if (m_type != Hidden)
          {
-            cout << endl;
-            PrintPath(d_out);
-            cout << "=";
-            PrintValue(d_out);
-            cout << endl;
+            if (json)
+            {
+               PrintJsonEntry(d_out);
+            }
+            else
+            {
+               cout << endl;
+               PrintPath(d_out);
+               cout << "=";
+               PrintValue(d_out);
+               cout << endl;
+            }
          }
       }
    }

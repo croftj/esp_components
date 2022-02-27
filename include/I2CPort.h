@@ -170,10 +170,12 @@ private:
       NUM_PORTS = 256
    };
    
-   static uint8_t             m_mode[NUM_PORTS];
-   static uint8_t             m_ddr[NUM_PORTS];
-   static uint8_t             m_pins[NUM_PORTS];
-   static I2CPort*            m_objects[NUM_PORTS];
+   static uint8_t    m_mode[NUM_PORTS];
+   static uint8_t    m_ddr[NUM_PORTS];
+   static uint8_t    m_pins[NUM_PORTS];
+   static I2CPort*   m_objects[NUM_PORTS];
+   static uint8_t    m_pinsPrevious[NUM_PORTS];
+   static bool       m_pinsFirst;
 };
 
 #endif
