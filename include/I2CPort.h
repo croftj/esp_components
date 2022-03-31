@@ -147,9 +147,12 @@ public:
       m_outputEnabled = f;
    }
 
-   void static *exec(void*);
+   void static exec(void*);
 
 protected:
+   bool write(uint8_t reg, uint8_t data);
+   esp_err_t readRegister(uint8_t i2c_addr, uint8_t i2c_reg, uint8_t* data_rd, size_t size);
+
    virtual void     writePortData(uint8_t m_addr, uint8_t data) = 0;
    virtual void     writePortDDR(uint8_t m_addr, uint8_t ddr) = 0;
    virtual void     processPort(uint8_t m_addr, uint8_t ddr) = 0;

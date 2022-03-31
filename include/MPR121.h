@@ -12,7 +12,7 @@ public:
 
    uint16_t read()
    {
-      return(m_status);
+      return(m_keyStatus);
    }
 
    virtual void   processPort(uint8_t addr, uint8_t ddr);
@@ -21,8 +21,6 @@ public:
    virtual void   initializePort(uint8_t addr, uint8_t ddr);
 
 protected:
-   void write(uint8_t reg, uint8_t data);
-   
    uint16_t    m_keyStatus;
 
    enum 

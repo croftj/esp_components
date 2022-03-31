@@ -4,6 +4,7 @@
 #include "freertos/semphr.h"
 
 #define DEVICE_NAME "MPR121"
+#define TAG __PRETTY_FUNCTION__
 
 //StaticSemaphore_t MPR121::m_ioMutexBuf;
 //SemaphoreHandle_t MPR121::m_ioMutex;
@@ -12,6 +13,7 @@ MPR121 *mpr121;
 
 MPR121::MPR121(I2CPort::IOMode_t mode, uint8_t addr, uint8_t mask, gpio_num_t irq_pin) :
       I2CPort(mode, addr, mask),
+      m_keyStatus(0x00),
       m_irqPin(irq_pin),
       m_CDC(15),
       m_FFI(0),
@@ -99,33 +101,6 @@ MPR121::MPR121(I2CPort::IOMode_t mode, uint8_t addr, uint8_t mask, gpio_num_t ir
 */
 }
 
-void MPR121::write(uint8_t reg, uint8_t data)
-{
-   esp_err_t err;
-
-   if (xSemaphoreTake(m_ioMutex, 5000 / portTICK_RATE_MS))
-   {
-      i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-      i2c_master_start(cmd);
-      i2c_master_write_byte(cmd, m_addr << 1| I2C_MASTER_WRITE, (i2c_ack_type_t)1);
-      i2c_master_write_byte(cmd, reg, (i2c_ack_type_t)1);
-      i2c_master_write_byte(cmd, data, (i2c_ack_type_t)1);
-      i2c_master_stop(cmd);
-      ESP_LOGI(DEVICE_NAME, "writing: 0x%x to reg 0x%x at addr 0x%x", data, reg, m_addr);
-      if ((err = i2c_master_cmd_begin(m_port, cmd, 1000 / portTICK_RATE_MS)) != ESP_OK)
-      {
-         if (err == ESP_ERR_TIMEOUT)
-            ESP_LOGW(DEVICE_NAME, "I2C Bus is busy");
-         else
-            ESP_LOGW(DEVICE_NAME, "I2C Write Failed: a:0x%x, d:0x%x", m_addr, data);
-      }
-      i2c_cmd_link_delete(cmd);
-      xSemaphoreGive(m_ioMutex);
-   }
-   else
-      ESP_LOGW("I2C_Write", "I2C Semaphore timeout");
-}
-
 void MPR121::processPort(uint8_t addr, uint8_t ddr) 
 {
    esp_err_t err;
@@ -135,8 +110,9 @@ void MPR121::processPort(uint8_t addr, uint8_t ddr)
    if ( ! irq)
    {
       ESP_LOGI(DEVICE_NAME, "Detected Keypress!");
-      if (xSemaphoreTake(m_ioMutex, 1000 / portTICK_RATE_MS))
+      if (xSemaphoreTake(m_ioMutex, 10 / portTICK_RATE_MS))
       {
+         ESP_LOGW(TAG, "got I2C semaphore");
          i2c_cmd_handle_t cmd = i2c_cmd_link_create();
          i2c_master_start(cmd);
 //         i2c_master_write_byte(cmd, m_addr << 1| I2C_MASTER_WRITE, (i2c_ack_type_t)1);
@@ -146,7 +122,7 @@ void MPR121::processPort(uint8_t addr, uint8_t ddr)
          i2c_master_read_byte(cmd, buf, (i2c_ack_type_t)1);
          i2c_master_read_byte(cmd, buf + 1, (i2c_ack_type_t)0);
          i2c_master_stop(cmd);
-         if ((err = i2c_master_cmd_begin(m_port, cmd, 3000 / portTICK_RATE_MS)) != ESP_OK)
+         if ((err = i2c_master_cmd_begin(m_port, cmd, 5 / portTICK_RATE_MS)) != ESP_OK)
          {
             if (err == ESP_ERR_TIMEOUT)
                ESP_LOGW(DEVICE_NAME, "I2C Bus is busy");
@@ -154,6 +130,7 @@ void MPR121::processPort(uint8_t addr, uint8_t ddr)
                ESP_LOGW(DEVICE_NAME, "I2C eead Failed: a:0x%x", addr);
          }
          i2c_cmd_link_delete(cmd);
+         ESP_LOGW(TAG, "returned I2C semaphore");
          xSemaphoreGive(m_ioMutex);
          ESP_LOGI(DEVICE_NAME, "buf = 0x%04x", *((uint16_t*)buf));
          m_keyStatus = (0x00ff & buf[0]);
